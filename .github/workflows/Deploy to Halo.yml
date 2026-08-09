@@ -1,0 +1,51 @@
+name: Deploy to Halo
+
+on:
+  push:
+    branches: [main]
+  repository_dispatch:
+    types: [deploy]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 👇 新增：构建前直接按行号修改源码
+      - name: Patch source for Halo
+        run: |
+          # 1. 将 vite.config.ts 中的 BASE_URL 默认值改为 /tools
+          sed -i "s|process.env.BASE_URL ?? '/'|process.env.BASE_URL ?? '/tools'|g" vite.config.ts
+
+          # 2. 将 i18n.plugin.ts 第8行的 en 改为 zh
+          sed -i "8s/en/zh/" src/plugins/i18n.plugin.ts
+
+          # 3. 验证修改结果（可选，方便排查）
+          grep -n "BASE_URL" vite.config.ts
+          sed -n '8p' src/plugins/i18n.plugin.ts
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build
+        run: pnpm build
+
+      - name: Deploy to Halo
+        run: |
+          npx halo-static-pages-deploy-cli deploy \
+            -e ${{ secrets.ENDPOINT }} \
+            -i ${{ secrets.ID }} \
+            -t ${{ secrets.PAT }} \
+            -f dist
